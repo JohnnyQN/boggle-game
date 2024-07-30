@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Boggle</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+</head>
+<body>
+    <h1>Boggle Game</h1>
+    <div id="board" class="board">
+        {% for row in board %}
+            {% for letter in row %}
+                <div class="cell">{{ letter }}</div>
+            {% endfor %}
+        {% endfor %}
+    </div>
+    <form id="guess-form">
+        <input type="text" id="guess" placeholder="Enter word" required>
+        <button type="submit">Submit</button>
+    </form>
+    <button id="new-game-btn">Start New Game</button> <!-- New Game Button -->
+    <p id="result"></p>
+    <p id="score">Score: 0</p>
+    <p id="highest-score">Highest Score: {{ session.get('highest_score', 0) }}</p>
+    <p id="games-played">Games Played: {{ session.get('games_played', 0) }}</p>
+    <p id="timer">Time Remaining: 60</p> <!-- Add a timer element -->
+    <script>
+        let score = 0;
+        let timer = 60;
+        let timerInterval;
+    
+        // Function to update the board with new tiles
+        function updateBoard(board) {
+            const boardDiv = $('#board');
+            boardDiv.empty();  // Clear existing tiles
+    
+            board.forEach(row => {
+                row.forEach(letter => {
+                    boardDiv.append(`<div class="cell">${letter}</div>`);
+                });
+            });
+        }
+    
+        // Start New Game Button Event Handler
+        $('#new-game-btn').on('click', function() {
+            // Reset score and timer
+            score = 0;
+            $('#score').text(`Score: ${score}`);
+            $('#result').text('');
+    
+            // Reset timer
+            timer = 60;
+            $('#timer').text(`Time Remaining: ${timer}`);
+            
+            // Clear any existing timer intervals
+            if (timerInterval) clearInterval(timerInterval);
+    
+            // Restart the timer
+            timerInterval = setInterval(updateTimer, 1000);
+    
+            // Request new board from server
+            axios.post('/start-new-game')
+                .then(response => {
+                    const board = response.data.board;
+                    updateBoard(board); // Update the UI with the new board
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                });
+        });
+    
+        // Form Submit Event Handler
+        $('#guess-form').on('submit', function(e) {
+            e.preventDefault();
+            const guess = $('#guess').val().trim();
+            if (guess === '') return;
+    
+            axios.post('/check-word', { word: guess })
+                .then(response => {
+                    const result = response.data.result;
+                    if (result === 'ok') {
+                        score += guess.length;
+                        $('#result').text(`"${guess}" is a valid word!`);
+                    } else if (result === 'not-on-board') {
+                        $('#result').text(`"${guess}" is not on the board.`);
+                    } else {
+                        $('#result').text(`"${guess}" is not a valid word.`);
+                    }
+                    $('#score').text(`Score: ${score}`);
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                });
+    
+            // Clear the input box after submission
+            $('#guess').val('');
+        });
+    
+        function updateTimer() {
+            if (timer <= 0) {
+                clearInterval(timerInterval);
+                $('#guess-form').off('submit');
+                axios.post('/end-game', { score: score })
+                    .then(response => {
+                        $('#highest-score').text(`Highest Score: ${response.data.highest_score}`);
+                        $('#games-played').text(`Games Played: ${response.data.games_played}`);
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                    });
+            } else {
+                timer--;
+                $('#timer').text(`Time Remaining: ${timer}`); // Update timer display
+            }
+        }
+    
+        // Start the timer for the first game load
+        timerInterval = setInterval(updateTimer, 1000);
+    </script>    
+</body>
+</html>
